@@ -1,0 +1,44 @@
+{
+  "name": "besnovatyj/yii2-cms-videojs-10-widget",
+  "description": "Video.js v10 (Web Components) widget for Yii2 CMS. Supports local MP4 via VideoJS v10 and iframe embed for YouTube, Rutube, VK, Vimeo.",
+  "version": "1.0.0",
+  "type": "yii2-extension",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Besnovatyj",
+      "email": "your-email@example.com"
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "keywords": [
+    "yii2",
+    "extension",
+    "videojs",
+    "video",
+    "player",
+    "web-components"
+  ],
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {
+      "yiisoft/yii2-composer": true
+    },
+    "fxp-asset": {
+      "enabled": false
+    }
+  },
+  "require": {
+    "php": ">=8.4",
+    "yiisoft/yii2": "~2.0.0"
+  },
+  "require-dev": {
+    "roave/security-advisories": "dev-latest"
+  },
+  "autoload": {
+    "psr-4": {
+      "Besnovatyj\\VideoJs\\": "src/"
+    }
+  }
+}

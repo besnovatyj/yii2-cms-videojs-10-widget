@@ -1,0 +1,76 @@
+/*
+ * Copyright (c) 2026 Besnovatyj. Licensed under the MIT License.
+ */
+
+/* ─── VideoJS v10 Widget — Custom styles ───────────────────────────────────
+ *
+ * Стили для iframe click-to-play overlay.
+ * Этот файл импортируется в index.ts и включается ESBuild в player.css.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Wrapper для iframe (click-to-play режим) */
+.vjs-iframe-embed {
+    position: relative;
+    /* aspect-ratio задаёт высоту независимо от Bootstrap.
+     * ВАЖНО: НЕ используем ::before для высоты (Bootstrap .ratio::before делает это сам).
+     * aspect-ratio — страховка если Bootstrap не загружен. */
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    background-color: #000;
+    background-size: cover;
+    background-position: center;
+    overflow: hidden;
+}
+
+/* Кнопка воспроизведения (overlay).
+ * Специфичность 0,2,0 (.vjs-iframe-embed + .vjs-iframe-play-btn) перебивает
+ * Bootstrap .ratio > * (специфичность 0,1,0), который сбрасывает top/left/width/height
+ * на 0/0/100%/100% для всех прямых детей .ratio. */
+.vjs-iframe-embed .vjs-iframe-play-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 68px;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #fff;
+    transition: background 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Hover / Focus — кнопка становится красной (YouTube-стиль) */
+.vjs-iframe-embed:hover .vjs-iframe-play-btn,
+.vjs-iframe-embed:focus .vjs-iframe-play-btn {
+    background: rgba(220, 0, 0, 0.9);
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* Focus outline для keyboard navigation */
+.vjs-iframe-embed:focus {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+/* Затемнение постера при hover для лучшей видимости кнопки.
+ * Используем ::after (не ::before!) — Bootstrap .ratio использует ::before для высоты,
+ * поэтому ::before трогать нельзя. */
+.vjs-iframe-embed::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0);
+    transition: background 0.2s ease;
+    pointer-events: none;
+}
+
+.vjs-iframe-embed:hover::after,
+.vjs-iframe-embed:focus::after {
+    background: rgba(0, 0, 0, 0.15);
+}
