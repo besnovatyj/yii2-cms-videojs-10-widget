@@ -31,7 +31,7 @@ import '@videojs/html/video/skin.css';
 // Наши кастомные стили (overlay для iframe)
 import './styles.css';
 
-// ─── Iframe click-to-play ──────────────────────────────────────────────────
+// ─── Click-to-play (iframe + локальное видео) ──────────────────────────────
 
 interface IframeEmbedDataset {
     readonly src?: string;
@@ -39,25 +39,123 @@ interface IframeEmbedDataset {
     readonly referrerpolicy?: string;
 }
 
+/** Один источник локального видео (тег <source>). */
+interface VideoSource {
+    readonly src: string;
+    readonly type?: string;
+    readonly [attr: string]: string | number | undefined;
+}
+
 /**
  * Инициализирует все .vjs-iframe-embed элементы на странице.
+ *
+ * Один overlay-каркас обслуживает два режима:
+ *  - data-sources присутствует → локальное видео (монтируем <video-player>);
+ *  - иначе → внешний iframe (YouTube/Rutube/VK/Vimeo).
  */
-function initIframeEmbeds(): void {
+function initLazyEmbeds(): void {
     const embeds = document.querySelectorAll<HTMLElement>('.vjs-iframe-embed');
 
     embeds.forEach((embed: HTMLElement) => {
-        embed.addEventListener('click', () => handleIframeClick(embed));
+        // AbortController снимает ОБА слушателя после первой активации. Без этого
+        // клики по элементам управления смонтированного <video-player> всплывали бы
+        // обратно на .vjs-iframe-embed и пересоздавали плеер (перезапуск с начала).
+        const controller = new AbortController();
+        const { signal } = controller;
+
+        const activate = (): void => {
+            controller.abort();
+
+            if (embed.dataset.sources) {
+                handleVideoClick(embed);
+            } else {
+                handleIframeClick(embed);
+            }
+        };
+
+        embed.addEventListener('click', activate, { signal });
 
         // Клавиатурная доступность (WAI-ARIA)
         embed.addEventListener('keydown', (e: KeyboardEvent) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                handleIframeClick(embed);
+                activate();
             }
-        });
+        }, { signal });
 
         embed.setAttribute('tabindex', '0');
     });
+}
+
+/**
+ * Заменяет click-to-play overlay на VideoJS v10 <video-player> с autoplay.
+ * Клик — пользовательский жест, поэтому воспроизведение со звуком разрешено.
+ */
+function handleVideoClick(embed: HTMLElement): void {
+    const raw = embed.dataset.sources;
+    if (!raw) {
+        console.warn('vjs-embed: отсутствует data-sources атрибут', embed);
+        return;
+    }
+
+    let sources: VideoSource[];
+    try {
+        sources = JSON.parse(raw) as VideoSource[];
+    } catch (err) {
+        console.warn('vjs-embed: некорректный JSON в data-sources', embed, err);
+        return;
+    }
+    if (!Array.isArray(sources) || sources.length === 0) {
+        console.warn('vjs-embed: пустой список источников', embed);
+        return;
+    }
+
+    // <video-player> > <video-skin> > <video> > <source> (как в PHP-рендере не-lazy режима)
+    const player: HTMLElement = document.createElement('video-player');
+    // Абсолютно позиционируем внутри .vjs-iframe-embed (position:relative, aspect-ratio 16/9).
+    player.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+
+    const skin: HTMLElement = document.createElement('video-skin');
+    const video: HTMLVideoElement = document.createElement('video');
+
+    video.autoplay = true;
+    video.controls = embed.dataset.controls !== '0';
+    video.muted = embed.dataset.muted === '1';
+    if (embed.dataset.playsinline !== '0') {
+        video.setAttribute('playsinline', '');
+    }
+    video.preload = embed.dataset.preload ?? 'auto';
+    if (embed.dataset.poster) {
+        video.poster = embed.dataset.poster;
+    }
+    if (embed.dataset.title) {
+        video.setAttribute('aria-label', embed.dataset.title);
+    }
+
+    for (const source of sources) {
+        const sourceEl: HTMLSourceElement = document.createElement('source');
+        for (const [key, value] of Object.entries(source)) {
+            if (value === undefined || value === null) {
+                continue;
+            }
+            sourceEl.setAttribute(key, String(value));
+        }
+        video.appendChild(sourceEl);
+    }
+
+    skin.appendChild(video);
+    player.appendChild(skin);
+
+    // Снимаем overlay-оформление, сохраняя класс .vjs-iframe-embed (в нём aspect-ratio 16/9).
+    embed.style.backgroundImage = '';
+    embed.style.cursor = '';
+    embed.removeAttribute('role');
+    embed.removeAttribute('tabindex');
+    embed.innerHTML = '';
+    embed.appendChild(player);
+
+    // Страховка на случай, если autoplay-атрибут не сработает после апгрейда web-компонента.
+    void video.play().catch(() => { /* автозапуск отклонён браузером — не критично */ });
 }
 
 /**
@@ -99,8 +197,8 @@ function handleIframeClick(embed: HTMLElement): void {
 // ─── Инициализация ────────────────────────────────────────────────────────
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initIframeEmbeds);
+    document.addEventListener('DOMContentLoaded', initLazyEmbeds);
 } else {
     // DOM уже готов (например, скрипт подключён в конце body)
-    initIframeEmbeds();
+    initLazyEmbeds();
 }

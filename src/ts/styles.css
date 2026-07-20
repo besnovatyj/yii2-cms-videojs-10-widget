@@ -8,6 +8,15 @@
  * Этот файл импортируется в index.ts и включается ESBuild в player.css.
  * ─────────────────────────────────────────────────────────────────────────── */
 
+/* Дефолт виджета — прямоугольник без скругления.
+ * Скин VideoJS v10 по умолчанию округляет края на --media-border-radius: 2rem.
+ * Переменная наследуется в shadow DOM, поэтому задаём её на host-элементе.
+ * Скругление при необходимости включается переопределением --media-border-radius
+ * (например в SCSS темы): `video-player { --media-border-radius: 1rem; }` */
+video-player {
+    --media-border-radius: 0;
+}
+
 /* Wrapper для iframe (click-to-play режим) */
 .vjs-iframe-embed {
     position: relative;

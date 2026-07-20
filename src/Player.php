@@ -132,6 +132,20 @@ class Player extends Widget
      */
     public bool $playsinline = true;
 
+    /**
+     * Ленивый запуск локального видео (click-to-play).
+     *
+     * true (по умолчанию): до клика показывается постер + центральная кнопка ▶,
+     *   а тяжёлый <video-player> (скин VideoJS v10) монтируется и стартует только
+     *   после клика. Повторяет UX старого плеера (никакой панели управления до
+     *   взаимодействия) и экономит ресурсы страницы — скин/JS не грузятся вхолостую.
+     * false: <video-player> рендерится сразу, нижняя панель управления скина видна
+     *   ещё до старта воспроизведения.
+     *
+     * Аналог $lazyIframe, но для локальных источников ($sources).
+     */
+    public bool $lazyVideo = true;
+
     // ─── Парсинг контента шорткода ────────────────────────────────────────────
 
     /**
@@ -277,6 +291,11 @@ class Player extends Widget
      */
     private function renderVideoJs(): string
     {
+        // Ленивый режим: постер + кнопка ▶, реальный <video-player> монтируется по клику.
+        if ($this->lazyVideo) {
+            return $this->renderLazyVideo();
+        }
+
         // Атрибуты тега <video>
         $videoAttrs = [];
 
@@ -320,6 +339,53 @@ class Player extends Widget
         $skinHtml = Html::tag('video-skin', "\n    " . $videoHtml . "\n");
 
         return Html::tag('video-player', "\n" . $skinHtml . "\n");
+    }
+
+    /**
+     * Click-to-play overlay для локального видео ($sources).
+     *
+     * До клика показывает постер + центральную кнопку ▶ (та же разметка/стили,
+     * что и у iframe-overlay). Источники и атрибуты <video> кладём в data-*;
+     * по клику TypeScript (player.js) собирает <video-player><video-skin><video>
+     * и запускает воспроизведение (клик = пользовательский жест → autoplay разрешён).
+     */
+    private function renderLazyVideo(): string
+    {
+        $wrapperAttrs = [
+            // Переиспользуем .vjs-iframe-embed: он даёт aspect-ratio 16/9, overflow и
+            // позиционирование центральной кнопки. От iframe-overlay отличается наличием
+            // data-sources (по нему TypeScript понимает, что монтировать <video-player>).
+            'class' => 'vjs-iframe-embed',
+            'data-sources' => json_encode(
+                array_values($this->sources),
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            ),
+            'data-controls' => $this->controls ? '1' : '0',
+            'data-muted' => $this->muted ? '1' : '0',
+            'data-playsinline' => $this->playsinline ? '1' : '0',
+            'data-preload' => $this->preload,
+            'role' => 'button',
+            'aria-label' => $this->title ?? 'Воспроизвести видео',
+        ];
+
+        if ($this->title !== null) {
+            $wrapperAttrs['data-title'] = $this->title;
+        }
+
+        $style = 'cursor: pointer;';
+        if ($this->poster !== null) {
+            $wrapperAttrs['data-poster'] = $this->poster;
+            $style = 'background-image: url(' . Html::encode($this->poster) . '); cursor: pointer;';
+        }
+        $wrapperAttrs['style'] = $style;
+
+        // Кнопка воспроизведения (CSS-стилизована в player.css)
+        $playBtnHtml = Html::tag('div', '&#9654;', [
+            'class' => 'vjs-iframe-play-btn',
+            'aria-hidden' => 'true',
+        ]);
+
+        return Html::tag('div', "\n" . $playBtnHtml . "\n", $wrapperAttrs);
     }
 
     /**

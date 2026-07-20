@@ -50,6 +50,10 @@ echo \Besnovatyj\VideoJs\Player::widget([
 ]);
 ```
 
+> **По умолчанию `lazyVideo = true`** — до клика показывается постер + кнопка ▶,
+> а `<video-player>` (скин v10 с панелью управления) монтируется и стартует только
+> по клику. Чтобы рендерить плеер сразу (разметка ниже), задайте `'lazyVideo' => false`.
+
 **Генерирует HTML:**
 
 ```html
@@ -176,6 +180,7 @@ https://rutube.ru/embed/610084de88e90f53f038ebee2eef8dbb/
 | `preload`              | `string`  | `'auto'`     | Предзагрузка: `'auto'`, `'metadata'`, `'none'`            |
 | `muted`                | `bool`    | `false`      | Без звука                                                 |
 | `playsinline`          | `bool`    | `true`       | Inline на мобильных                                       |
+| `lazyVideo`            | `bool`    | `true`       | Click-to-play для локального видео: постер + ▶, `<video-player>` монтируется по клику |
 | `content`              | `?string` | `null`       | Внутренний контент шорткода (авто-парсинг `[source ...]`) |
 | `iframeSrc`            | `?string` | `null`       | URL iframe (YouTube, Rutube, VK, Vimeo)                   |
 | `iframeAllow`          | `string`  | `''`         | Атрибут `allow` для iframe                                |
