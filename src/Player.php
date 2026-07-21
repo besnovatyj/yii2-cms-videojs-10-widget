@@ -36,6 +36,12 @@ use yii\helpers\Html;
  * [videojs, iframeSrc="https://www.youtube.com/embed/ID" iframeAllow="..." poster="URL"][/videojs]
  * ```
  *
+ * Вертикальное видео (пропорция обёртки задаётся через aspectRatio или парой width/height):
+ * ```
+ * [videojs, aspectRatio="9:16" poster="/preview.png"][source src="/vertical.mp4" type="video/mp4"][/videojs]
+ * [videojs, width=1080 height=1920 poster="/preview.png"][source src="/vertical.mp4" type="video/mp4"][/videojs]
+ * ```
+ *
  * ## Использование с модулем актёров (PersonVideo)
  *
  * ```php
@@ -89,6 +95,30 @@ class Player extends Widget
      * Для iframe-режима используется напрямую; для VideoJS режима задаётся через CSS/Bootstrap.
      */
     public ?int $height = null;
+
+    /**
+     * Пропорция плеера (CSS aspect-ratio) для обёртки видео.
+     *
+     * Перекрывает дефолтную пропорцию 16/9, зашитую в CSS-класс `.vjs-iframe-embed`,
+     * инлайн-стилем `aspect-ratio`. Нужно, например, для вертикальных видео (Shorts/Reels),
+     * иначе постер обрезается по краям (`background-size: cover`), а плеер остаётся горизонтальным.
+     *
+     * Принимаемые форматы (нормализуются к синтаксису CSS `A / B`):
+     * - `"9:16"` или `"9/16"` — вертикальное видео;
+     * - `"16:9"` — горизонтальное;
+     * - `"0.5625"` — как одно число.
+     *
+     * Если свойство не задано, пропорция определяется в порядке:
+     * 1. атрибут `aspectRatio` на вложенном `[source ...]` (для совместимости с существующей разметкой);
+     * 2. вычисляется из $width / $height, если оба заданы (например width=1080 height=1920 → 9/16);
+     * 3. иначе применяется дефолт CSS (16/9).
+     *
+     * Пример шорткода:
+     * ```
+     * [videojs, aspectRatio="9:16" poster="/poster.png"][source src="/v.mp4" type="video/mp4"][/videojs]
+     * ```
+     */
+    public ?string $aspectRatio = null;
 
     // ─── VideoJS режим (локальный MP4) ───────────────────────────────────────
 
@@ -243,6 +273,10 @@ class Player extends Widget
             $this->parseShortcodeContent();
         }
 
+        // Снимаем с <source> управляющие (не HTML) атрибуты шорткода и подхватываем
+        // aspectRatio как запасной источник пропорции, если не задан на самом [videojs].
+        $this->sanitizeSources();
+
         // Регистрируем CSS/JS assets
         $this->registerAssets();
     }
@@ -338,7 +372,14 @@ class Player extends Widget
         $videoHtml = Html::tag('video', $sourcesHtml . "\n    ", $videoAttrs);
         $skinHtml = Html::tag('video-skin', "\n    " . $videoHtml . "\n");
 
-        return Html::tag('video-player', "\n" . $skinHtml . "\n");
+        // Пропорцию задаём на host-элементе <video-player> (он display:grid; width:100%).
+        $playerAttrs = [];
+        $aspectRatioStyle = $this->aspectRatioStyle();
+        if ($aspectRatioStyle !== '') {
+            $playerAttrs['style'] = ltrim($aspectRatioStyle);
+        }
+
+        return Html::tag('video-player', "\n" . $skinHtml . "\n", $playerAttrs);
     }
 
     /**
@@ -377,6 +418,7 @@ class Player extends Widget
             $wrapperAttrs['data-poster'] = $this->poster;
             $style = 'background-image: url(' . Html::encode($this->poster) . '); cursor: pointer;';
         }
+        $style .= $this->aspectRatioStyle();
         $wrapperAttrs['style'] = $style;
 
         // Кнопка воспроизведения (CSS-стилизована в player.css)
@@ -443,6 +485,7 @@ class Player extends Widget
             $wrapperAttrs['data-poster'] = $this->poster;
             $style = 'background-image: url(' . Html::encode($this->poster) . '); cursor: pointer;';
         }
+        $style .= $this->aspectRatioStyle();
         $wrapperAttrs['style'] = $style;
 
         // Кнопка воспроизведения (CSS-стилизована в player.css)
@@ -485,7 +528,14 @@ class Player extends Widget
 
         $iframeHtml = Html::tag('iframe', '', $iframeAttrs);
 
-        return Html::tag('div', "\n" . $iframeHtml . "\n", ['class' => 'ratio ratio-16x9']);
+        // Bootstrap .ratio задаёт высоту через padding у ::before и игнорирует CSS aspect-ratio,
+        // поэтому при кастомной пропорции используем собственную обёртку с aspect-ratio.
+        $aspectRatio = $this->resolveAspectRatio();
+        $wrapperAttrs = $aspectRatio !== null
+            ? ['style' => 'position: relative; width: 100%; aspect-ratio: ' . $aspectRatio . ';']
+            : ['class' => 'ratio ratio-16x9'];
+
+        return Html::tag('div', "\n" . $iframeHtml . "\n", $wrapperAttrs);
     }
 
     /**
@@ -564,6 +614,59 @@ class Player extends Widget
         }
 
         return $attributes;
+    }
+
+    /**
+     * Убирает из источников управляющие атрибуты шорткода, не являющиеся валидными
+     * атрибутами тега <source> (aspectRatio, fluid), чтобы они не попадали в разметку.
+     *
+     * Если пропорция не задана на самом [videojs], но присутствует на [source]
+     * (aspectRatio="9:16"), подхватываем её как запасное значение — так продолжает
+     * работать существующая разметка, где атрибут стоит на вложенном источнике.
+     */
+    private function sanitizeSources(): void
+    {
+        foreach ($this->sources as &$source) {
+            if ($this->aspectRatio === null && isset($source['aspectRatio']) && $source['aspectRatio'] !== '') {
+                $this->aspectRatio = (string) $source['aspectRatio'];
+            }
+            unset($source['aspectRatio'], $source['fluid']);
+        }
+        unset($source);
+    }
+
+    /**
+     * Вычисляет значение CSS-свойства aspect-ratio для обёртки плеера.
+     *
+     * Приоритет: явно заданный $aspectRatio → вычисление из $width / $height → null (дефолт CSS).
+     * Разделители ":" и "/" нормализуются к синтаксису CSS "A / B".
+     *
+     * @return string|null Например "9 / 16", "1080 / 1920" или null.
+     */
+    private function resolveAspectRatio(): ?string
+    {
+        $raw = $this->aspectRatio;
+
+        if ($raw === null || trim($raw) === '') {
+            if ($this->width !== null && $this->height !== null && $this->width > 0 && $this->height > 0) {
+                return $this->width . ' / ' . $this->height;
+            }
+            return null;
+        }
+
+        // "9:16", "9/16", "9 / 16" → "9 / 16"; одиночное число ("0.5625") остаётся как есть.
+        return preg_replace('/\s*[:\/]\s*/', ' / ', trim($raw));
+    }
+
+    /**
+     * Возвращает готовый фрагмент инлайн-стиля с пропорцией (с ведущим пробелом
+     * для дозаписи к существующему style) либо пустую строку.
+     */
+    private function aspectRatioStyle(): string
+    {
+        $aspectRatio = $this->resolveAspectRatio();
+
+        return $aspectRatio !== null ? ' aspect-ratio: ' . $aspectRatio . ';' : '';
     }
 
     /**
